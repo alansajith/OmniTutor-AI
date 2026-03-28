@@ -1,0 +1,35 @@
+name: omnitutor
+description: "OmniTutor AI - Multimodal AI Tutoring App"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  camera: ^0.11.0+2
+  cupertino_icons: ^1.0.8
+  firebase_core: ^3.0.0
+  firebase_auth: ^5.0.0
+  cloud_firestore: ^5.0.0
+  google_generative_ai: ^0.4.6
+  flutter_dotenv: ^5.2.1
+  flutter_tts: ^4.2.2
+  speech_to_text: ^7.0.0
+  permission_handler: ^11.3.1
+  confetti: ^0.7.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - .env
+    - assets/videos/
+    - assets/images/
+    - assets/audio/
