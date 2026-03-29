@@ -69,16 +69,21 @@ Your goal is to build the student's UNDERSTANDING and CONFIDENCE, not just get t
     required ChatSession session,
     Uint8List? imageBytes,
     String userText = 'Please look at my work and help me.',
+    String selectedLanguage = 'English',
     String mimeType = 'image/jpeg',
   }) async* {
+    // ── Prepend Critical Language Instruction ──────────────────────────
+    final String languagePrompt =
+        'CRITICAL: You MUST provide your entire response (explanations, guiding questions, and mastery affirmations) strictly in $selectedLanguage. DO NOT respond in English or any other language unless asked for a translation. Translate all technical terms if appropriate.\n\n';
+
     final Content content;
     if (imageBytes != null) {
       content = Content.multi([
         DataPart(mimeType, imageBytes),
-        TextPart(userText),
+        TextPart(languagePrompt + userText),
       ]);
     } else {
-      content = Content.text(userText);
+      content = Content.text(languagePrompt + userText);
     }
 
     try {

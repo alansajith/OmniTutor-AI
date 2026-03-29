@@ -9,6 +9,8 @@ import '../services/firestore_service.dart';
 import '../services/ai_service.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:confetti/confetti.dart';
+import '../widgets/tutor_widgets.dart';
+import '../services/language_service.dart';
 
 class TutoringScreen extends StatefulWidget {
   const TutoringScreen({super.key});
@@ -26,9 +28,10 @@ class _TutoringScreenState extends State<TutoringScreen> {
   String? _cameraError;
 
   // ── Services ───────────────────────────────────────────────────────────
-  final _authService = AuthService();
+  final _auth = FirebaseAuth.instance;
   final _firestoreService = FirestoreService();
   final _aiService = AIService();
+  final _authService = AuthService();
   final FlutterTts _tts = FlutterTts();
 
   // ── AI Chat Session ────────────────────────────────────────────────────
@@ -53,6 +56,10 @@ class _TutoringScreenState extends State<TutoringScreen> {
 
   // ── Gamification ───────────────────────────────────────────────────────
   late ConfettiController _confettiController;
+
+  // ── Language Support ───────────────────────────────────────────────────
+  String _selectedLanguage = 'English';
+  String _selectedLocale = 'en-US';
 
   @override
   void initState() {
@@ -146,7 +153,7 @@ class _TutoringScreenState extends State<TutoringScreen> {
         },
         listenFor: const Duration(seconds: 30),
         pauseFor: const Duration(seconds: 4),
-        localeId: 'en_US',
+        localeId: _selectedLocale.replaceAll('-', '_'),
       );
     } catch (e) {
       setState(() => _isListening = false);
@@ -160,8 +167,14 @@ class _TutoringScreenState extends State<TutoringScreen> {
 
   Future<void> _speak(String text) async {
     if (_isMuted || text.isEmpty) return;
-    await _tts.stop();
-    await _tts.speak(text);
+    try {
+      await _tts.stop();
+      // Dynamically set language accent to match AI response
+      await _tts.setLanguage(_selectedLocale);
+      await _tts.speak(text);
+    } catch (e) {
+      debugPrint('TTS Error ($_selectedLocale): $e');
+    }
   }
 
   // ── Camera ─────────────────────────────────────────────────────────────
@@ -202,7 +215,7 @@ class _TutoringScreenState extends State<TutoringScreen> {
   Future<void> _sendMessage({Uint8List? imageBytes}) async {
     if (_isStreaming) return;
 
-    final userText = _textController.text.trim().isNotEmpty
+    final String userText = _textController.text.trim().isNotEmpty
         ? _textController.text.trim()
         : (imageBytes != null ? 'Please look at my work and help me.' : '');
 
@@ -233,9 +246,10 @@ class _TutoringScreenState extends State<TutoringScreen> {
         session: _chatSession,
         imageBytes: imageBytes,
         userText: userText,
+        selectedLanguage: _selectedLanguage,
       );
 
-      await for (final chunk in stream) {
+      await for (final String chunk in stream) {
         fullResponse.write(chunk);
         if (mounted && _streamingBubbleIndex != null) {
           // Clean text for real-time display
@@ -252,57 +266,55 @@ class _TutoringScreenState extends State<TutoringScreen> {
               .addPostFrameCallback((_) => _scrollToBottom());
         }
       }
+
+      // 4. Post-stream logic
+      final String aiTextRaw = fullResponse.toString();
+      final bool masteryAchieved = aiTextRaw.contains('[MASTERY_ACHIEVED]');
+      final String aiText =
+          aiTextRaw.replaceAll('[MASTERY_ACHIEVED]', '').trim();
+
+      if (aiText.isNotEmpty) {
+        _speak(aiText);
+
+        if (masteryAchieved) {
+          _confettiController.play();
+          final User? user = _auth.currentUser;
+          if (user != null) {
+            await _firestoreService.awardPoints(user.uid, 100);
+          }
+        }
+
+        if (imageBytes != null) {
+          setState(() => _isSaving = true);
+          final User? user = _auth.currentUser;
+          if (user != null) {
+            await _firestoreService.saveSession(
+              uid: user.uid,
+              subject: 'Multimodal Session',
+              aiResponse: aiText,
+            );
+            await _firestoreService.awardPoints(user.uid, 50);
+          }
+          if (mounted) setState(() => _isSaving = false);
+        }
+      }
     } catch (e) {
+      debugPrint('Gemini Error: $e');
       if (mounted) {
-        final errorMsg = e.toString().contains('GEMINI_API_KEY')
-            ? 'Missing Gemini API Key — check your .env'
-            : 'Could not reach Gemini. Check your connection.';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMsg), backgroundColor: Colors.redAccent),
+          const SnackBar(
+            content: Text('Connection lost. Please try again.'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
-        if (_streamingBubbleIndex != null) {
-          setState(() {
-            _chatMessages.removeAt(_streamingBubbleIndex!);
-            _streamingBubbleIndex = null;
-          });
-        }
       }
-    }
-
-    // 4. Finalise
-    if (mounted) setState(() => _isStreaming = false);
-
-    final aiTextRaw = fullResponse.toString();
-    final bool masteryAchieved = aiTextRaw.contains('[MASTERY_ACHIEVED]');
-    final aiText = aiTextRaw.replaceAll('[MASTERY_ACHIEVED]', '').trim();
-
-    if (aiText.isNotEmpty) {
-      _speak(aiText);
-
-      // Trigger Celebration!
-      if (masteryAchieved) {
-        _confettiController.play();
-        final User? user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          // Bonus XP for mastery!
-          await _firestoreService.awardPoints(user.uid, 100);
-        }
-      }
-
-      // Only log to Firestore on camera (multimodal) turns
-      if (imageBytes != null) {
-        setState(() => _isSaving = true);
-        final User? user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          await _firestoreService.saveSession(
-            uid: user.uid,
-            subject: 'Camera Session',
-            aiResponse: aiText,
-          );
-          // Standard XP for session completion
-          await _firestoreService.awardPoints(user.uid, 50);
-        }
-        if (mounted) setState(() => _isSaving = false);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isStreaming = false;
+          _streamingBubbleIndex = null;
+        });
       }
     }
   }
@@ -376,11 +388,14 @@ class _TutoringScreenState extends State<TutoringScreen> {
           ],
         ),
         actions: [
+          // Language Selector
+          _buildLanguageSelector(),
+          const SizedBox(width: 4),
           IconButton(
             icon: Icon(
               _isMuted ? Icons.volume_off_outlined : Icons.volume_up_outlined,
               color: const Color(0xFF8A8AB0),
-              size: 22,
+              size: 20,
             ),
             tooltip: _isMuted ? 'Unmute' : 'Mute',
             onPressed: () {
@@ -390,16 +405,17 @@ class _TutoringScreenState extends State<TutoringScreen> {
           ),
           if (_isSaving)
             const Padding(
-              padding: EdgeInsets.only(right: 12),
+              padding: EdgeInsets.only(right: 8),
               child: SizedBox(
-                width: 16,
-                height: 16,
+                width: 14,
+                height: 14,
                 child: CircularProgressIndicator(
-                    color: Color(0xFF00D4FF), strokeWidth: 2),
+                    color: Color(0xFF00D4FF), strokeWidth: 1.5),
               ),
             ),
           IconButton(
-            icon: const Icon(Icons.logout_outlined, color: Color(0xFF8A8AB0)),
+            icon: const Icon(Icons.logout_outlined,
+                color: Color(0xFF8A8AB0), size: 20),
             tooltip: 'Sign out',
             onPressed: () async {
               final navigator = Navigator.of(context);
@@ -445,7 +461,7 @@ class _TutoringScreenState extends State<TutoringScreen> {
                       const Positioned(
                         top: 12,
                         left: 12,
-                        child: _CornerBracket(color: Color(0xFF6C63FF)),
+                        child: CornerBracket(color: Color(0xFF6C63FF)),
                       ),
                       Positioned(
                         top: 12,
@@ -453,7 +469,7 @@ class _TutoringScreenState extends State<TutoringScreen> {
                         child: Transform(
                           alignment: Alignment.center,
                           transform: Matrix4.rotationY(3.14159),
-                          child: const _CornerBracket(color: Color(0xFF6C63FF)),
+                          child: const CornerBracket(color: Color(0xFF6C63FF)),
                         ),
                       ),
                       Positioned(
@@ -462,7 +478,7 @@ class _TutoringScreenState extends State<TutoringScreen> {
                         child: Transform(
                           alignment: Alignment.center,
                           transform: Matrix4.rotationX(3.14159),
-                          child: const _CornerBracket(color: Color(0xFF6C63FF)),
+                          child: const CornerBracket(color: Color(0xFF6C63FF)),
                         ),
                       ),
                       Positioned(
@@ -471,7 +487,7 @@ class _TutoringScreenState extends State<TutoringScreen> {
                         child: Transform(
                           alignment: Alignment.center,
                           transform: Matrix4.rotationZ(3.14159),
-                          child: const _CornerBracket(color: Color(0xFF6C63FF)),
+                          child: const CornerBracket(color: Color(0xFF6C63FF)),
                         ),
                       ),
                       // Status chip
@@ -561,7 +577,7 @@ class _TutoringScreenState extends State<TutoringScreen> {
                                 final msg = _chatMessages[index];
                                 final isStreaming = _isStreaming &&
                                     index == _streamingBubbleIndex;
-                                return _ChatBubble(
+                                return ChatBubble(
                                   text: msg['text'] ?? '',
                                   isAI: msg['role'] == 'ai',
                                   isStreaming: isStreaming,
@@ -668,38 +684,71 @@ class _TutoringScreenState extends State<TutoringScreen> {
       );
     }
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.videocam_off_outlined,
-              size: 48, color: Colors.white.withValues(alpha: 0.1)),
-          const SizedBox(height: 12),
-          Text(
-            'Camera is Off',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.2),
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: _initializeCamera,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6C63FF).withValues(alpha: 0.1),
-              foregroundColor: const Color(0xFF6C63FF),
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(
-                  color: const Color(0xFF6C63FF).withValues(alpha: 0.3),
-                ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(
+          children: [
+            Icon(Icons.videocam_off_outlined,
+                size: 36, color: Colors.white.withValues(alpha: 0.1)),
+            const SizedBox(height: 6),
+            Text(
+              'Camera is Off',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.2),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
               ),
             ),
-            icon: const Icon(Icons.videocam_outlined, size: 18),
-            label: const Text('Turn On Camera'),
-          ),
-        ],
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: _initializeCamera,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6C63FF).withValues(alpha: 0.1),
+                foregroundColor: const Color(0xFF6C63FF),
+                elevation: 0,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: BorderSide(
+                    color: const Color(0xFF6C63FF).withValues(alpha: 0.2),
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.videocam_outlined, size: 16),
+              label:
+                  const Text('Turn On Camera', style: TextStyle(fontSize: 12)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLanguageSelector() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: DropdownButton<String>(
+        value: _selectedLanguage,
+        icon: const Icon(Icons.language, color: Color(0xFF6C63FF), size: 18),
+        underline: const SizedBox(),
+        dropdownColor: const Color(0xFF1A1A2E),
+        style: const TextStyle(color: Colors.white70, fontSize: 13),
+        onChanged: (String? newValue) {
+          if (newValue != null) {
+            setState(() {
+              _selectedLanguage = newValue;
+              _selectedLocale = LanguageConfig.getLocale(newValue);
+            });
+          }
+        },
+        items:
+            LanguageConfig.names.map<DropdownMenuItem<String>>((String value) {
+          return DropdownMenuItem<String>(
+            value: value,
+            child: Text(value),
+          );
+        }).toList(),
       ),
     );
   }
@@ -864,169 +913,4 @@ class _TutoringScreenState extends State<TutoringScreen> {
   }
 }
 
-// ── Supporting Widgets ─────────────────────────────────────────────────────
-
-class _CornerBracket extends StatelessWidget {
-  final Color color;
-  const _CornerBracket({required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 20,
-      height: 20,
-      child: CustomPaint(painter: _CornerPainter(color: color)),
-    );
-  }
-}
-
-class _CornerPainter extends CustomPainter {
-  final Color color;
-  _CornerPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(Offset.zero, Offset(size.width, 0), paint);
-    canvas.drawLine(Offset.zero, Offset(0, size.height), paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter old) => false;
-}
-
-class _ChatBubble extends StatelessWidget {
-  final String text;
-  final bool isAI;
-  final bool isStreaming;
-
-  const _ChatBubble({
-    required this.text,
-    required this.isAI,
-    this.isStreaming = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: isAI ? Alignment.centerLeft : Alignment.centerRight,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          gradient: isAI
-              ? const LinearGradient(
-                  colors: [Color(0xFF1E1E35), Color(0xFF252540)])
-              : const LinearGradient(
-                  colors: [Color(0xFF6C63FF), Color(0xFF8A63FF)]),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(isAI ? 4 : 18),
-            bottomRight: Radius.circular(isAI ? 18 : 4),
-          ),
-          border: isAI
-              ? Border.all(
-                  color: const Color(0xFF6C63FF).withValues(alpha: 0.2),
-                  width: 1)
-              : null,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (isAI) ...[
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.auto_awesome,
-                      size: 12, color: Color(0xFF00D4FF)),
-                  const SizedBox(width: 5),
-                  Text(
-                    'OmniTutor',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: const Color(0xFF00D4FF).withValues(alpha: 0.85),
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-            ],
-            if (isStreaming && text.isEmpty)
-              const _TypingIndicator()
-            else
-              Text(
-                isStreaming ? '$text▋' : text,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  height: 1.5,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Three animated dots shown before the first chunk arrives.
-class _TypingIndicator extends StatefulWidget {
-  const _TypingIndicator();
-
-  @override
-  State<_TypingIndicator> createState() => _TypingIndicatorState();
-}
-
-class _TypingIndicatorState extends State<_TypingIndicator>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
-    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _anim,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: List.generate(
-          3,
-          (i) => Container(
-            margin: const EdgeInsets.only(right: 4),
-            width: 7,
-            height: 7,
-            decoration: const BoxDecoration(
-              color: Color(0xFF00D4FF),
-              shape: BoxShape.circle,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
+// ── (Supporting widgets moved to tutor_widgets.dart) ────────────────────────

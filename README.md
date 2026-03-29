@@ -18,6 +18,17 @@ Powered by **Gemini 2.0 Flash**, OmniTutor acts as a patient mentor that uses th
 *   **🎙️ Voice Interaction:** Integrated Speech-to-Text (STT) and Text-to-Speech (TTS) for hands-free learning.
 *   **📊 Progress Dashboard:** Review your session history and track your levels in a sleek, dark-themed UI.
 *   **🛡️ On-Demand Camera:** Privacy-focused camera activation to save battery and ensure control.
+*   **✨ Professional Feedback:** Smooth shimmer loading states for AI responses.
+*   **🏗️ Modular Architecture:** Decoupled services and extracted widgets for peak performance.
+*   **🛑 Error Boundaries:** Graceful network and API failure handling with user alerts.
+
+---
+
+## 📱 App Showcase
+
+| Welcome Screen | Tutoring Hub | AI Socratic Chat |
+| :---: | :---: | :---: |
+| ![Login](assets/screenshots/login_screen.png) | ![Tutoring](assets/screenshots/tutoring_screen_empty.png) | ![Chat](assets/screenshots/tutoring_chat.png) |
 
 ---
 

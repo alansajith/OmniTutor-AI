@@ -116,34 +116,15 @@ class _LoginScreenState extends State<LoginScreen>
                     children: [
                       Image.asset(
                         'assets/images/logo.png',
-                        width: 100,
-                        height: 100,
+                        width: 150,
+                        height: 150,
                         fit: BoxFit.contain,
                       ),
-                      const SizedBox(height: 10),
-                      ShaderMask(
-                        shaderCallback: (bounds) => const LinearGradient(
-                          colors: [
-                            Color.fromARGB(255, 218, 218, 224),
-                            Color.fromARGB(255, 250, 245, 251)
-                          ],
-                        ).createShader(bounds),
-                        child: const Text(
-                          'OmniTutor AI',
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white,
-                            fontFamily:'CooperHewitt'
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
                       Text(
                         'Your AI-powered study companion',
                         style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white.withValues(alpha: 0.55),
+                          fontSize: 14,
+                          color: const Color.fromARGB(255, 236, 232, 232).withValues(alpha: 0.55),
                         ),
                       ),
                     ],
