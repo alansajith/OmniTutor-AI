@@ -5,6 +5,9 @@
 Powered by **Gemini 2.0 Flash**, OmniTutor acts as a patient mentor that uses the Socratic method—asking guiding questions to lead students to their own "Aha!" moments.
 
 ---
+<img width="1320" height="2868" alt="Simulator Screenshot - iPhone 17 Pro Max - 2026-03-29 at 18 08 52" src="https://github.com/user-attachments/assets/6adcbd93-1377-4750-9d40-722ebc7808b8" />
+
+
 
 ## 🚀 Key Features
 
