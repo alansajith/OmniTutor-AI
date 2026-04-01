@@ -653,7 +653,17 @@ class _TutoringScreenState extends State<TutoringScreen> {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: CameraPreview(_cameraController!),
+            child: SizedOverflowBox(
+              size: Size.infinite,
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: _cameraController!.value.previewSize!.height,
+                  height: _cameraController!.value.previewSize!.width,
+                  child: CameraPreview(_cameraController!),
+                ),
+              ),
+            ),
           ),
           Positioned(
             top: 8,
