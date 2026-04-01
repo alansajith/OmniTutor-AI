@@ -13,9 +13,11 @@ class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   final _authService = AuthService();
   bool _obscurePassword = true;
   bool _isLoading = false;
+  bool _isLogin = true; // Toggle between Login and Register
   String? _errorMessage;
 
   late AnimationController _animController;
@@ -36,16 +38,22 @@ class _LoginScreenState extends State<LoginScreen>
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     _animController.dispose();
     super.dispose();
   }
 
-  Future<void> _signIn() async {
+  Future<void> _handleAuth() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
       setState(() => _errorMessage = 'Please enter your email and password.');
+      return;
+    }
+
+    if (!_isLogin && password != _confirmPasswordController.text) {
+      setState(() => _errorMessage = 'Passwords do not match.');
       return;
     }
 
@@ -55,27 +63,20 @@ class _LoginScreenState extends State<LoginScreen>
     });
 
     try {
-      await _authService.signInWithEmail(email, password);
+      if (_isLogin) {
+        await _authService.signInWithEmail(email, password);
+      } else {
+        await _authService.registerWithEmail(email, password);
+      }
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
     } on FirebaseAuthException catch (e) {
       setState(() {
         _errorMessage = _friendlyError(e.code);
         _isLoading = false;
       });
-    }
-  }
-
-  Future<void> _signInAnonymously() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-    try {
-      await _authService.signInAnonymously();
-      if (mounted) Navigator.pushReplacementNamed(context, '/home');
-    } on FirebaseAuthException catch (e) {
+    } catch (e) {
       setState(() {
-        _errorMessage = _friendlyError(e.code);
+        _errorMessage = 'An unexpected error occurred.';
         _isLoading = false;
       });
     }
@@ -124,7 +125,8 @@ class _LoginScreenState extends State<LoginScreen>
                         'Your AI-powered study companion',
                         style: TextStyle(
                           fontSize: 14,
-                          color: const Color.fromARGB(255, 236, 232, 232).withValues(alpha: 0.55),
+                          color: const Color.fromARGB(255, 236, 232, 232)
+                              .withValues(alpha: 0.55),
                         ),
                       ),
                     ],
@@ -133,7 +135,7 @@ class _LoginScreenState extends State<LoginScreen>
                 const SizedBox(height: 48),
                 // ── Form Header ──────────────────────────────────────
                 Text(
-                  'Welcome back',
+                  _isLogin ? 'Welcome back' : 'Create Account',
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
@@ -142,7 +144,9 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Sign in to continue your learning journey',
+                  _isLogin
+                      ? 'Sign in to continue your learning journey'
+                      : 'Join our community of curious learners',
                   style: TextStyle(
                     fontSize: 13,
                     color: Colors.white.withValues(alpha: 0.45),
@@ -180,6 +184,18 @@ class _LoginScreenState extends State<LoginScreen>
                     ),
                   ),
                 ),
+                if (!_isLogin) ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _confirmPasswordController,
+                    obscureText: _obscurePassword,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'Confirm Password',
+                      prefixIcon: Icon(Icons.lock_reset_outlined),
+                    ),
+                  ),
+                ],
                 // ── Error message ────────────────────────────────────
                 if (_errorMessage != null) ...[
                   const SizedBox(height: 12),
@@ -213,7 +229,7 @@ class _LoginScreenState extends State<LoginScreen>
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _isLoading ? null : _signIn,
+                    onPressed: _isLoading ? null : _handleAuth,
                     child: _isLoading
                         ? const SizedBox(
                             height: 20,
@@ -223,58 +239,11 @@ class _LoginScreenState extends State<LoginScreen>
                               strokeWidth: 2,
                             ),
                           )
-                        : const Text(
-                            'Sign In',
-                            style: TextStyle(
+                        : Text(
+                            _isLogin ? 'Sign In' : 'Create Account',
+                            style: const TextStyle(
                                 fontSize: 16, fontWeight: FontWeight.w600),
                           ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                // ── Divider ──────────────────────────────────────────
-                Row(
-                  children: [
-                    Expanded(
-                        child: Divider(
-                            color: Colors.white.withValues(alpha: 0.15))),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text(
-                        'OR',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.4),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                        child: Divider(
-                            color: Colors.white.withValues(alpha: 0.15))),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                // ── Quick Demo Login (Anonymous) ─────────────────────
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _isLoading ? null : _signInAnonymously,
-                    icon: const Icon(Icons.flash_on_outlined,
-                        color: Color(0xFF00D4FF)),
-                    label: const Text(
-                      'Quick Demo (Anonymous)',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: Color(0xFF2D2D44)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -283,17 +252,26 @@ class _LoginScreenState extends State<LoginScreen>
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        "Don't have an account? ",
+                        _isLogin
+                            ? "Don't have an account? "
+                            : "Already have an account? ",
                         style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.45)),
                       ),
                       TextButton(
-                        onPressed: _isLoading ? null : () {},
+                        onPressed: _isLoading
+                            ? null
+                            : () {
+                                setState(() {
+                                  _isLogin = !_isLogin;
+                                  _errorMessage = null;
+                                });
+                              },
                         style: TextButton.styleFrom(
                             padding: EdgeInsets.zero, minimumSize: Size.zero),
-                        child: const Text(
-                          'Sign up',
-                          style: TextStyle(
+                        child: Text(
+                          _isLogin ? 'Sign up' : 'Sign in',
+                          style: const TextStyle(
                             color: Color(0xFF6C63FF),
                             fontWeight: FontWeight.w600,
                           ),

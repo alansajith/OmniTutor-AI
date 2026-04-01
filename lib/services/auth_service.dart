@@ -27,11 +27,6 @@ class AuthService {
     );
   }
 
-  /// Sign in anonymously — useful for quick hackathon demo.
-  Future<UserCredential> signInAnonymously() async {
-    return await _auth.signInAnonymously();
-  }
-
   /// Sign out the current user.
   Future<void> signOut() async {
     await _auth.signOut();
